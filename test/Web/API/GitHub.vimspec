@@ -1,0 +1,162 @@
+let s:V = vital#of('vital')
+let s:B = s:V.import('Data.Base64')
+let s:J = s:V.import('Web.JSON')
+let s:G = s:V.import('Web.API.GitHub')
+
+Describe Web.API.GitHub
+  Context .get_config()
+    It returns a config dictionary
+      let ret = s:G.get_config()
+      Assert IsDict(ret)
+      Assert KeyExists(ret, 'api_url')
+      Assert KeyExists(ret, 'authorize_scopes')
+      Assert KeyExists(ret, 'authorize_note')
+      Assert KeyExists(ret, 'authorize_note_url')
+    End
+  End
+
+  Context .set_config({config})
+    It overrides a config dictionary
+      let old_config = s:G.get_config()
+      let new_config = {
+            \ 'api_url': 'foobar',
+            \ 'authorize_scopes': ['foo'],
+            \ 'authorize_note': 'hello',
+            \ 'authorize_note_url': 'hoge',
+            \}
+      try
+        call s:G.set_config(new_config)
+        let ret = s:G.get_config()
+        Assert Equals(ret.api_url, 'foobar')
+        Assert Equals(ret.authorize_scopes, ['foo'])
+        Assert Equals(ret.authorize_note, 'hello')
+        Assert Equals(ret.authorize_note_url, 'hoge')
+      finally
+        call s:G.set_config(old_config)
+      endtry
+    End
+  End
+
+  Context .new({options})
+    It returns a client object
+      let ret = s:G.new()
+      Assert IsDict(ret)
+      Assert KeyExists(ret, 'api_url')
+      Assert KeyExists(ret, 'authorize_scopes')
+      Assert KeyExists(ret, 'authorize_note')
+      Assert KeyExists(ret, 'authorize_note_url')
+      " Public methods
+      Assert KeyExists(ret, 'login')
+      Assert KeyExists(ret, 'logout')
+      Assert KeyExists(ret, 'request')
+      Assert KeyExists(ret, 'get')
+      Assert KeyExists(ret, 'post')
+      Assert KeyExists(ret, 'put')
+      Assert KeyExists(ret, 'patch')
+      Assert KeyExists(ret, 'delete')
+    End
+  End
+
+  Context A client instance
+    Before
+      let client = s:G.new()
+      " mock clikent 'request' method to prevent HTTP request
+      function! client._request(...) abort
+        let self._request_args = a:000
+        return {
+              \ 'status': 200,
+              \ 'statusText': 'success',
+              \ 'content': '',
+              \}
+      endfunction
+    End
+
+    Context .authorize({username}[, {options}])
+      It returns a new personal access toekn
+        Assert KeyExists(client, 'authorize')
+        Skip The method uses interactive functions and cannot be tested.
+      End
+    End
+
+    Context .authorize_with_password({username}, {password}[, {otp}])
+      It request a personal access token to GitHub API
+        let ret = client.authorize_with_password(
+              \ 'username',
+              \ 'password',
+              \)
+        Assert Equals(ret, {
+              \ 'status': 200,
+              \ 'statusText': 'success',
+              \ 'content': '',
+              \})
+        let args = client._request_args
+        let data = s:J.encode({
+              \ 'scopes': [],
+              \ 'note': client.get_authorize_note(),
+              \ 'note_url': '',
+              \})
+        let insecurepassword = s:B.encode('username:password')
+        Assert Equals(args, [{
+              \ 'headers': {
+              \   'Authorization': 'basic ' . insecurepassword,
+              \ },
+              \ 'method': 'POST',
+              \ 'data': data,
+              \ 'url': 'https://api.github.com/authorizations',
+              \ 'anonymous': 1,
+              \}])
+      End
+
+      It request a personal access token to GitHub API with {otp}
+        let ret = client.authorize_with_password(
+              \ 'username',
+              \ 'password',
+              \ '012345',
+              \)
+        Assert Equals(ret, {
+              \ 'status': 200,
+              \ 'statusText': 'success',
+              \ 'content': '',
+              \})
+        let args = client._request_args
+        let data = s:J.encode({
+              \ 'scopes': [],
+              \ 'note': client.get_authorize_note(),
+              \ 'note_url': '',
+              \})
+        let insecurepassword = s:B.encode('username:password')
+        Assert Equals(args, [{
+              \ 'headers': {
+              \   'Authorization': 'basic ' . insecurepassword,
+              \   'X-GitHub-OTP': '012345',
+              \ },
+              \ 'method': 'POST',
+              \ 'data': data,
+              \ 'url': 'https://api.github.com/authorizations',
+              \ 'anonymous': 1,
+              \}])
+      End
+    End
+
+    Context .authenticate({username}, {token}[, {options})
+      It confirm an authentication of {username} with {token}
+        let ret = client.authenticate(
+              \ 'username',
+              \ '012345', {
+              \   'verbose': 0,
+              \ }
+              \)
+        Assert Equals(ret, 1)
+        Assert Equals(client._request_args, [{
+              \ 'headers': {
+              \   'Authorization': 'token 012345',
+              \ },
+              \ 'data': '{}',
+              \ 'method': 'GET',
+              \ 'url': 'https://api.github.com/user',
+              \ 'anonymous': 1,
+              \}])
+      End
+    End
+  End
+End
