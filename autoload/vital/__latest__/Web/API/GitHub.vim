@@ -20,6 +20,10 @@ function! s:_vital_depends() abort " {{{
         \ 'Web.HTTP',
         \]
 endfunction " }}}
+function! s:_throw(msgs) abort " {{{
+  let msgs = type(a:msgs) == type([]) ? a:msgs : [a:msgs]
+  throw printf('vital: Web.API.GitHub: %s', join(msgs, "\n"))
+endfunction " }}}
 
 let s:client = {}
 function! s:client.get_api_url(...) abort " {{{
@@ -61,7 +65,7 @@ function! s:client.authorize_with_password(username, password, ...) abort " {{{
 endfunction " }}}
 function! s:client.authorize(username, ...) abort " {{{
   let options = extend({
-        \ 'verbose': 2,
+        \ 'verbose': 1,
         \}, get(a:000, 0, {}),
         \)
   redraw
@@ -73,7 +77,7 @@ function! s:client.authorize(username, ...) abort " {{{
   if empty(password)
     return ''
   endif
-  if options.verbose > 1
+  if options.verbose
     redraw
     echo 'Requesting an authorization token ...'
   endif
@@ -89,7 +93,7 @@ function! s:client.authorize(username, ...) abort " {{{
       return ''
     endif
     " re-authorize with OTP
-    if options.verbose > 1
+    if options.verbose
       redraw
       echo 'Requesting an authorization token with OTP ...'
     endif
@@ -98,32 +102,24 @@ function! s:client.authorize(username, ...) abort " {{{
   " translate json content to object
   let res.content = get(res, 'content', '')
   let res.content = empty(res.content) ? {} : s:J.decode(res.content)
-
-  if res.status == 201
-    return res.content.token
+  if res.status != 201
+    call s:_throw([
+          \ printf(
+          \   'Authorization as "%s" in "%s" has failed',
+          \   a:username, self.baseurl
+          \ ),
+          \ printf('%s: %s', res.status, res.statusText),
+          \ get(res.content, 'message', ''),
+          \])
   endif
-
-  if options.verbose > 0
-    redraw
-    echohl ErrorMsg
-    echo printf('%s: %s', res.status, res.statusText)
-    echohl None
-    if has_key(res.content, 'message')
-      echo res.content.message
-    endif
-    echo printf(
-          \ 'Remove if you already have a personal access token for "%s',
-          \ self.get_authorize_note(),
-          \)
-  endif
-  return ''
+  return res.content.token
 endfunction " }}}
 function! s:client.authenticate(username, token, ...) abort " {{{
   let options = extend({
         \ 'verbose': 2,
         \}, get(a:000, 0, {}),
         \)
-  if options.verbose > 1
+  if options.verbose
     redraw
     echo printf('Confirming a personal access token for "%s" ...', a:username)
   endif
@@ -131,20 +127,16 @@ function! s:client.authenticate(username, token, ...) abort " {{{
   let res = self.get(url, {}, {}, { 'anonymous': 0, 'token': a:token })
   let res.content = get(res, 'content', '')
   let res.content = empty(res.content) ? {} : s:J.decode(res.content)
-  if res.status == 200
-    return 1
+  if res.status != 200
+    call s:_throw([
+          \ printf(
+          \   'Authentication as "%s" in "%s" with a cached token has failed',
+          \   a:username, self.baseurl
+          \ ),
+          \ printf('%s: %s', res.status, res.statusText),
+          \ get(res.content, 'message', ''),
+          \])
   endif
-
-  if options.verbose > 0
-    redraw
-    echohl ErrorMsg
-    echo printf('%s: %s', res.status, res.statusText)
-    echohl None
-    if has_key(res.content, 'message')
-      echo res.content.message
-    endif
-  endif
-  return 0
 endfunction " }}}
 function! s:client.get_token(username) abort " {{{
   return self.token_cache.get(a:username)
@@ -193,28 +185,22 @@ function! s:client.login(username, ...) abort " {{{
         \)
   let authorized_username = self.get_authorized_username()
   if !options.force && a:username ==# authorized_username
-    return 1
+    return
   endif
 
   let token = self.get_token(a:username)
   if !empty(token)
-    if self.authenticate(a:username, token, options)
-      call self.set_authorized_username(a:username)
-      return 1
-    else
-      call self.set_authorized_username('')
-      return 0
-    endif
+    call self.authenticate(a:username, token, options)
+    call self.set_authorized_username(a:username)
+    return
   endif
 
   let token = self.authorize(a:username, options)
   if empty(token)
-    call self.set_authorized_username('')
-    return 0
+    throw s:_throw('Login canceled by user')
   endif
   call self.set_token(a:username, token)
   call self.set_authorized_username(a:username)
-  return 1
 endfunction " }}}
 function! s:client.logout(...) abort " {{{
   let options = extend({

@@ -151,7 +151,6 @@ Describe Web.API.GitHub
               \ }
               \)
         let args = s:sv.H._request_args
-        Assert Equals(ret, 1)
         Assert Equals(args, [{
               \ 'headers': {
               \   'Authorization': 'token 012345',
