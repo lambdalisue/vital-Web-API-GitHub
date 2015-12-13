@@ -1,14 +1,18 @@
 let s:V = vital#of('vital')
-let s:B = s:V.import('Data.Base64')
 let s:J = s:V.import('Web.JSON')
 let s:G = s:V.import('Web.API.GitHub')
+let s:P = s:V.import('System.Filepath')
+let s:S = s:V.import('Vim.ScriptLocal')
+let s:sv = s:S.svars(s:P.realpath(s:P.abspath(
+      \ 'autoload/vital/__latest__/Web/API/GitHub.vim',
+      \)))
 
 Describe Web.API.GitHub
   Context .get_config()
     It returns a config dictionary
       let ret = s:G.get_config()
       Assert IsDict(ret)
-      Assert KeyExists(ret, 'api_url')
+      Assert KeyExists(ret, 'baseurl')
       Assert KeyExists(ret, 'authorize_scopes')
       Assert KeyExists(ret, 'authorize_note')
       Assert KeyExists(ret, 'authorize_note_url')
@@ -19,7 +23,7 @@ Describe Web.API.GitHub
     It overrides a config dictionary
       let old_config = s:G.get_config()
       let new_config = {
-            \ 'api_url': 'foobar',
+            \ 'baseurl': 'foobar',
             \ 'authorize_scopes': ['foo'],
             \ 'authorize_note': 'hello',
             \ 'authorize_note_url': 'hoge',
@@ -27,7 +31,7 @@ Describe Web.API.GitHub
       try
         call s:G.set_config(new_config)
         let ret = s:G.get_config()
-        Assert Equals(ret.api_url, 'foobar')
+        Assert Equals(ret.baseurl, 'foobar')
         Assert Equals(ret.authorize_scopes, ['foo'])
         Assert Equals(ret.authorize_note, 'hello')
         Assert Equals(ret.authorize_note_url, 'hoge')
@@ -41,7 +45,7 @@ Describe Web.API.GitHub
     It returns a client object
       let ret = s:G.new()
       Assert IsDict(ret)
-      Assert KeyExists(ret, 'api_url')
+      Assert KeyExists(ret, 'baseurl')
       Assert KeyExists(ret, 'authorize_scopes')
       Assert KeyExists(ret, 'authorize_note')
       Assert KeyExists(ret, 'authorize_note_url')
@@ -60,8 +64,7 @@ Describe Web.API.GitHub
   Context A client instance
     Before
       let client = s:G.new()
-      " mock clikent 'request' method to prevent HTTP request
-      function! client._request(...) abort
+      function! s:sv.H.request(...) abort
         let self._request_args = a:000
         return {
               \ 'status': 200,
@@ -74,7 +77,7 @@ Describe Web.API.GitHub
     Context .authorize({username}[, {options}])
       It returns a new personal access toekn
         Assert KeyExists(client, 'authorize')
-        Skip The method uses interactive functions and cannot be tested.
+        Skip The method uses interactive functions
       End
     End
 
@@ -89,21 +92,21 @@ Describe Web.API.GitHub
               \ 'statusText': 'success',
               \ 'content': '',
               \})
-        let args = client._request_args
+        let args = s:sv.H._request_args
         let data = s:J.encode({
               \ 'scopes': [],
               \ 'note': client.get_authorize_note(),
               \ 'note_url': '',
               \})
-        let insecurepassword = s:B.encode('username:password')
         Assert Equals(args, [{
-              \ 'headers': {
-              \   'Authorization': 'basic ' . insecurepassword,
-              \ },
+              \ 'headers': {},
               \ 'method': 'POST',
               \ 'data': data,
               \ 'url': 'https://api.github.com/authorizations',
               \ 'anonymous': 1,
+              \ 'username': 'username',
+              \ 'password': 'password',
+              \ 'authMethod': 'basic',
               \}])
       End
 
@@ -118,22 +121,23 @@ Describe Web.API.GitHub
               \ 'statusText': 'success',
               \ 'content': '',
               \})
-        let args = client._request_args
+        let args = s:sv.H._request_args
         let data = s:J.encode({
               \ 'scopes': [],
               \ 'note': client.get_authorize_note(),
               \ 'note_url': '',
               \})
-        let insecurepassword = s:B.encode('username:password')
         Assert Equals(args, [{
               \ 'headers': {
-              \   'Authorization': 'basic ' . insecurepassword,
               \   'X-GitHub-OTP': '012345',
               \ },
               \ 'method': 'POST',
               \ 'data': data,
               \ 'url': 'https://api.github.com/authorizations',
               \ 'anonymous': 1,
+              \ 'username': 'username',
+              \ 'password': 'password',
+              \ 'authMethod': 'basic',
               \}])
       End
     End
@@ -146,15 +150,17 @@ Describe Web.API.GitHub
               \   'verbose': 0,
               \ }
               \)
+        let args = s:sv.H._request_args
         Assert Equals(ret, 1)
-        Assert Equals(client._request_args, [{
+        Assert Equals(args, [{
               \ 'headers': {
               \   'Authorization': 'token 012345',
               \ },
-              \ 'data': '{}',
+              \ 'param': {},
               \ 'method': 'GET',
               \ 'url': 'https://api.github.com/user',
-              \ 'anonymous': 1,
+              \ 'anonymous': 0,
+              \ 'token': '012345',
               \}])
       End
     End
