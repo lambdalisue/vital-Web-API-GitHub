@@ -181,6 +181,7 @@ function! s:client.login(username, ...) abort " {{{
   let options = extend({
         \ 'force': 0,
         \ 'verbose': 2,
+        \ 'skip_authentication': self.skip_authentication,
         \}, get(a:000, 0, {})
         \)
   let authorized_username = self.get_authorized_username()
@@ -190,7 +191,9 @@ function! s:client.login(username, ...) abort " {{{
 
   let token = self.get_token(a:username)
   if !empty(token)
-    call self.authenticate(a:username, token, options)
+    if !options.skip_authentication
+      call self.authenticate(a:username, token, options)
+    endif
     call self.set_authorized_username(a:username)
     return
   endif
@@ -322,6 +325,7 @@ function! s:new(...) abort " {{{
         \ 'authorize_note': s:config.authorize_note,
         \ 'authorize_note_url': s:config.authorize_note_url,
         \ 'token_cache': s:C.new('memory'),
+        \ 'skip_authentication': 0,
         \}, get(a:000, 0, {}),
         \)
   return extend(deepcopy(s:client), options)
