@@ -7,6 +7,7 @@ let s:config.baseurl = 'https://api.github.com/'
 let s:config.authorize_scopes = []
 let s:config.authorize_note = printf('vim@%s:%s', hostname(), localtime())
 let s:config.authorize_note_url = ''
+let s:config.skip_authentication = 0
 
 function! s:_vital_loaded(V) abort " {{{
   let s:C = a:V.import('System.Cache')
@@ -25,45 +26,41 @@ function! s:_throw(msgs) abort " {{{
   throw printf('vital: Web.API.GitHub: %s', join(msgs, "\n"))
 endfunction " }}}
 
-let s:client = {}
-function! s:client.get_api_url(...) abort " {{{
-  let base_url = substitute(self.baseurl, '/$', '', '')
-  let bits = map(copy(a:000), 'substitute(v:val, "^/\|/$", "", "g")')
-  return join(extend([base_url], bits), '/')
+function! s:_get_header(token) abort " {{{
+  return empty(a:token) ? {} : { 'Authorization': 'token ' . a:token }
 endfunction " }}}
-function! s:client.get_authorize_scopes() abort " {{{
-  " See available scopes at
-  " https://developer.github.com/v3/oauth/#scopes
-  return self.authorize_scopes
-endfunction " }}}
-function! s:client.get_authorize_note() abort " {{{
-  return self.authorize_note
-endfunction " }}}
-function! s:client.get_authorize_note_url() abort " {{{
-  return self.authorize_note_url
-endfunction " }}}
-
-function! s:client.authorize_with_password(username, password, ...) abort " {{{
-  let otp = get(a:000, 0, '')
-  let url = self.get_api_url('authorizations')
+function! s:_authorize(client, username, password, ...) abort " {{{
+  let options = extend({
+        \ 'verbose': 1,
+        \ 'otp': '',
+        \}, get(a:000, 0, {}),
+        \)
+  let url = a:client.get_absolute_url('authorizations')
   " Note:
   "   It is not impossible to add 'client_id', 'client_secret', and
   "   'fingerprint' but how do you keep 'client_secret' as secret in
   "   Vim script? Thus omit these parameters.
   let params = {
-        \ 'scopes':   self.get_authorize_scopes(),
-        \ 'note':     self.get_authorize_note(),
-        \ 'note_url': self.get_authorize_note_url(),
+        \ 'scopes':   a:client.get_authorize_scopes(),
+        \ 'note':     a:client.get_authorize_note(),
+        \ 'note_url': a:client.get_authorize_note_url(),
         \}
-  let headers = empty(otp) ? {} : { 'X-GitHub-OTP': otp }
-  return self.post(url, params, headers, {
-        \ 'anonymous': 1,
+  let headers = empty(options.otp) ? {} : { 'X-GitHub-OTP': options.otp }
+  if options.verbose
+    redraw
+    if options.otp
+      echo 'Requesting an authorization token with OTP...'
+    else
+      echo 'Requesting an authorization token ...'
+    endif
+  endif
+  return a:client.post(url, params, headers, {
         \ 'username': a:username,
         \ 'password': a:password,
         \ 'authMethod': 'basic',
         \})
 endfunction " }}}
-function! s:client.authorize(username, ...) abort " {{{
+function! s:_interactive_authorize(client, username, ...) abort " {{{
   let options = extend({
         \ 'verbose': 1,
         \}, get(a:000, 0, {}),
@@ -71,20 +68,18 @@ function! s:client.authorize(username, ...) abort " {{{
   redraw
   echohl Question
   let password = inputsecret(printf(
-        \ 'Please input a password for "%s": ', a:username,
+        \ 'Please input a password of "%s" in "%s": ',
+        \ a:username, a:client.baseurl,
         \))
   echohl None
   if empty(password)
     return ''
   endif
-  if options.verbose
-    redraw
-    echo 'Requesting an authorization token ...'
-  endif
-  let res = self.authorize_with_password(a:username, password)
+  let res = s:_authorize(a:client, a:username, password, {
+        \ 'verbose': options.verbose,
+        \})
   " check if OTP is required
-  let h = filter(res.header, 'stridx(v:val, "X-GitHub-OTP:") == 0')
-  if len(h)
+  if len(filter(res.header, 'stridx(v:val, "X-GitHub-OTP:") == 0'))
     redraw
     echohl Question
     let otp = input('Please input a six digit two-factor authentication code: ')
@@ -97,7 +92,10 @@ function! s:client.authorize(username, ...) abort " {{{
       redraw
       echo 'Requesting an authorization token with OTP ...'
     endif
-    let res = self.authorize_with_password(a:username, password, otp)
+    let res = s:_authorize(a:client, a:username, password, {
+          \ 'verbose': options.verbose,
+          \ 'otp': otp,
+          \})
   endif
   " translate json content to object
   let res.content = get(res, 'content', '')
@@ -114,17 +112,20 @@ function! s:client.authorize(username, ...) abort " {{{
   endif
   return res.content.token
 endfunction " }}}
-function! s:client.authenticate(username, token, ...) abort " {{{
+function! s:_authenticate(client, username, token, ...) abort " {{{
   let options = extend({
-        \ 'verbose': 2,
+        \ 'verbose': 1,
         \}, get(a:000, 0, {}),
         \)
   if options.verbose
     redraw
-    echo printf('Confirming a personal access token for "%s" ...', a:username)
+    echo printf(
+          \ 'Confirming an access token of "%s" in "%s" ...',
+          \ a:username, a:client.baseurl,
+          \)
   endif
-  let url = self.get_api_url('user')
-  let res = self.get(url, {}, {}, { 'anonymous': 0, 'token': a:token })
+  let url = a:client.get_absolute_url('user')
+  let res = a:client.get(url, {}, s:_get_header(a:token))
   let res.content = get(res, 'content', '')
   let res.content = empty(res.content) ? {} : s:J.decode(res.content)
   if res.status != 200
@@ -138,45 +139,50 @@ function! s:client.authenticate(username, token, ...) abort " {{{
           \])
   endif
 endfunction " }}}
-function! s:client.get_token(username) abort " {{{
-  return self.token_cache.get(a:username)
+
+let s:client = {}
+" User can override the following methods
+function! s:client.get_authorize_scopes() abort " {{{
+  " See available scopes at
+  " https://developer.github.com/v3/oauth/#scopes
+  return self.authorize_scopes
 endfunction " }}}
-function! s:client.set_token(username, token) abort " {{{
+function! s:client.get_authorize_note() abort " {{{
+  return self.authorize_note
+endfunction " }}}
+function! s:client.get_authorize_note_url() abort " {{{
+  return self.authorize_note_url
+endfunction " }}}
+
+" Private methods
+function! s:client._set_token(username, token) abort " {{{
   if empty(a:token)
     return self.token_cache.remove(a:username)
   else
     return self.token_cache.set(a:username, a:token)
   endif
 endfunction " }}}
+function! s:client._set_authorized_username(username) abort " {{{
+  let self._authorized_username = a:username
+endfunction " }}}
+
+" Public methods
+function! s:client.is_authorized() abort " {{{
+  return !empty(self.get_authorized_username())
+endfunction " }}}
+function! s:client.get_absolute_url(relative_url) abort " {{{
+  let baseurl = substitute(self.baseurl, '/$', '', '')
+  let partial = substitute(a:relative_url, '^/', '', '')
+  return baseurl . '/' . partial
+endfunction " }}}
+function! s:client.get_token(...) abort " {{{
+  let username = get(a:000, 0, '')
+  let username = empty(username) ? self.get_authorized_username() : username
+  return empty(username) ? '' : self.token_cache.get(username)
+endfunction " }}}
 function! s:client.get_authorized_username() abort " {{{
   return get(self, '_authorized_username', '')
 endfunction " }}}
-function! s:client.set_authorized_username(username) abort " {{{
-  if empty(a:username)
-    silent! unlet! self._authorized_username
-  else
-    let self._authorized_username = a:username
-  endif
-endfunction " }}}
-function! s:client.get_header(...) abort " {{{
-  let options = extend({
-        \ 'anonymous': 0,
-        \ 'token': '',
-        \ }, get(a:000, 0, {}),
-        \)
-  if options.anonymous
-    return {}
-  endif
-  if empty(options.token)
-    let username = self.get_authorized_username()
-    let token = self.get_token(username)
-  else
-    let token = options.token
-  endif
-  return empty(token) ? {} : { 'Authorization': 'token ' . token }
-endfunction " }}}
-
-" PUBLIC methods
 function! s:client.login(username, ...) abort " {{{
   let options = extend({
         \ 'force': 0,
@@ -192,18 +198,18 @@ function! s:client.login(username, ...) abort " {{{
   let token = self.get_token(a:username)
   if !empty(token)
     if !options.skip_authentication
-      call self.authenticate(a:username, token, options)
+      call s:_authenticate(self, a:username, token, options)
     endif
-    call self.set_authorized_username(a:username)
+    call self._set_authorized_username(a:username)
     return
   endif
 
-  let token = self.authorize(a:username, options)
+  let token = s:_interactive_authorize(a:client, a:username, options)
   if empty(token)
     throw s:_throw('Login canceled by user')
   endif
-  call self.set_token(a:username, token)
-  call self.set_authorized_username(a:username)
+  call self._set_token(a:username, token)
+  call self._set_authorized_username(a:username)
 endfunction " }}}
 function! s:client.logout(...) abort " {{{
   let options = extend({
@@ -213,10 +219,10 @@ function! s:client.logout(...) abort " {{{
   if options.permanent
     let authorized_username = self.get_authorized_username()
     if !empty(authorized_username)
-      call self.set_token(authorized_username, '')
+      call self._set_token(authorized_username, '')
     endif
   endif
-  return self.set_authorized_username('')
+  return self._set_authorized_username('')
 endfunction " }}}
 function! s:client.request(...) abort " {{{
   if a:0 == 3
@@ -238,9 +244,9 @@ function! s:client.request(...) abort " {{{
   endif
   let settings.url = settings.url =~# '^https\?://'
         \ ? settings.url
-        \ : self.get_api_url(settings.url)
+        \ : self.get_absolute_url(settings.url)
   let settings.headers = extend(
-        \ self.get_header(settings),
+        \ s:_get_header(self.get_token()),
         \ get(settings, 'headers', {}),
         \)
   return s:H.request(settings)
@@ -325,7 +331,7 @@ function! s:new(...) abort " {{{
         \ 'authorize_note': s:config.authorize_note,
         \ 'authorize_note_url': s:config.authorize_note_url,
         \ 'token_cache': s:C.new('memory'),
-        \ 'skip_authentication': 0,
+        \ 'skip_authentication': s:config.skip_authentication,
         \}, get(a:000, 0, {}),
         \)
   return extend(deepcopy(s:client), options)

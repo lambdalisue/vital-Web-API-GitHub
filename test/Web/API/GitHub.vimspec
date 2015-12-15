@@ -6,6 +6,9 @@ let s:S = s:V.import('Vim.ScriptLocal')
 let s:sv = s:S.svars(s:P.realpath(s:P.abspath(
       \ 'autoload/vital/__latest__/Web/API/GitHub.vim',
       \)))
+let s:sf = s:S.sfuncs(s:P.realpath(s:P.abspath(
+      \ 'autoload/vital/__latest__/Web/API/GitHub.vim',
+      \)))
 
 Describe Web.API.GitHub
   Context .get_config()
@@ -16,6 +19,7 @@ Describe Web.API.GitHub
       Assert KeyExists(ret, 'authorize_scopes')
       Assert KeyExists(ret, 'authorize_note')
       Assert KeyExists(ret, 'authorize_note_url')
+      Assert KeyExists(ret, 'skip_authentication')
     End
   End
 
@@ -27,6 +31,7 @@ Describe Web.API.GitHub
             \ 'authorize_scopes': ['foo'],
             \ 'authorize_note': 'hello',
             \ 'authorize_note_url': 'hoge',
+            \ 'skip_authentication': 1,
             \}
       try
         call s:G.set_config(new_config)
@@ -35,6 +40,7 @@ Describe Web.API.GitHub
         Assert Equals(ret.authorize_scopes, ['foo'])
         Assert Equals(ret.authorize_note, 'hello')
         Assert Equals(ret.authorize_note_url, 'hoge')
+        Assert Equals(ret.skip_authentication, 1)
       finally
         call s:G.set_config(old_config)
       endtry
@@ -49,7 +55,12 @@ Describe Web.API.GitHub
       Assert KeyExists(ret, 'authorize_scopes')
       Assert KeyExists(ret, 'authorize_note')
       Assert KeyExists(ret, 'authorize_note_url')
+      Assert KeyExists(ret, 'skip_authentication')
       " Public methods
+      Assert KeyExists(ret, 'is_authorized')
+      Assert KeyExists(ret, 'get_absolute_url')
+      Assert KeyExists(ret, 'get_token')
+      Assert KeyExists(ret, 'get_authorized_username')
       Assert KeyExists(ret, 'login')
       Assert KeyExists(ret, 'logout')
       Assert KeyExists(ret, 'request')
@@ -61,10 +72,10 @@ Describe Web.API.GitHub
     End
   End
 
-  Context A client instance
+  Context [PRIVATE] s:_authorize({client}, {username}, {password}[, {options})
     Before
       let client = s:G.new()
-      function! s:sv.H.request(...) abort
+      function! client.request(...) abort
         let self._request_args = a:000
         return {
               \ 'status': 200,
@@ -74,94 +85,100 @@ Describe Web.API.GitHub
       endfunction
     End
 
-    Context .authorize({username}[, {options}])
-      It returns a new personal access toekn
-        Assert KeyExists(client, 'authorize')
-        Skip The method uses interactive functions
-      End
+    It request a personal access token to GitHub API
+      let ret = s:sf._authorize(
+            \ client,
+            \ 'username',
+            \ 'password', {
+            \   'verbose': 0,
+            \ },
+            \)
+      Assert Equals(ret, {
+            \ 'status': 200,
+            \ 'statusText': 'success',
+            \ 'content': '',
+            \})
+      let args = client._request_args
+      let data = s:J.encode({
+            \ 'scopes': [],
+            \ 'note': client.get_authorize_note(),
+            \ 'note_url': '',
+            \})
+      Assert Equals(args, [{
+            \ 'headers': {},
+            \ 'method': 'POST',
+            \ 'data': data,
+            \ 'url': 'https://api.github.com/authorizations',
+            \ 'username': 'username',
+            \ 'password': 'password',
+            \ 'authMethod': 'basic',
+            \}])
     End
 
-    Context .authorize_with_password({username}, {password}[, {otp}])
-      It request a personal access token to GitHub API
-        let ret = client.authorize_with_password(
-              \ 'username',
-              \ 'password',
-              \)
-        Assert Equals(ret, {
+    It request a personal access token to GitHub API with {otp}
+      let ret = s:sf._authorize(
+            \ client,
+            \ 'username',
+            \ 'password', {
+            \   'verbose': 0,
+            \   'otp': '012345',
+            \ },
+            \)
+      Assert Equals(ret, {
+            \ 'status': 200,
+            \ 'statusText': 'success',
+            \ 'content': '',
+            \})
+      let args = client._request_args
+      let data = s:J.encode({
+            \ 'scopes': [],
+            \ 'note': client.get_authorize_note(),
+            \ 'note_url': '',
+            \})
+      Assert Equals(args, [{
+            \ 'headers': {
+            \   'X-GitHub-OTP': '012345',
+            \ },
+            \ 'method': 'POST',
+            \ 'data': data,
+            \ 'url': 'https://api.github.com/authorizations',
+            \ 'username': 'username',
+            \ 'password': 'password',
+            \ 'authMethod': 'basic',
+            \}])
+    End
+  End
+
+  Context [PRIVATE] s:_authenticate({client}, {username}, {token}[, {options})
+    Before
+      let client = s:G.new()
+      function! client.request(...) abort
+        let self._request_args = a:000
+        return {
               \ 'status': 200,
               \ 'statusText': 'success',
               \ 'content': '',
-              \})
-        let args = s:sv.H._request_args
-        let data = s:J.encode({
-              \ 'scopes': [],
-              \ 'note': client.get_authorize_note(),
-              \ 'note_url': '',
-              \})
-        Assert Equals(args, [{
-              \ 'headers': {},
-              \ 'method': 'POST',
-              \ 'data': data,
-              \ 'url': 'https://api.github.com/authorizations',
-              \ 'anonymous': 1,
-              \ 'username': 'username',
-              \ 'password': 'password',
-              \ 'authMethod': 'basic',
-              \}])
-      End
-
-      It request a personal access token to GitHub API with {otp}
-        let ret = client.authorize_with_password(
-              \ 'username',
-              \ 'password',
-              \ '012345',
-              \)
-        Assert Equals(ret, {
-              \ 'status': 200,
-              \ 'statusText': 'success',
-              \ 'content': '',
-              \})
-        let args = s:sv.H._request_args
-        let data = s:J.encode({
-              \ 'scopes': [],
-              \ 'note': client.get_authorize_note(),
-              \ 'note_url': '',
-              \})
-        Assert Equals(args, [{
-              \ 'headers': {
-              \   'X-GitHub-OTP': '012345',
-              \ },
-              \ 'method': 'POST',
-              \ 'data': data,
-              \ 'url': 'https://api.github.com/authorizations',
-              \ 'anonymous': 1,
-              \ 'username': 'username',
-              \ 'password': 'password',
-              \ 'authMethod': 'basic',
-              \}])
-      End
+              \}
+      endfunction
     End
 
-    Context .authenticate({username}, {token}[, {options})
-      It confirm an authentication of {username} with {token}
-        let ret = client.authenticate(
-              \ 'username',
-              \ '012345', {
-              \   'verbose': 0,
-              \ }
-              \)
-        let args = s:sv.H._request_args
-        Assert Equals(args, [{
-              \ 'headers': {
-              \   'Authorization': 'token 012345',
-              \ },
-              \ 'param': {},
-              \ 'method': 'GET',
-              \ 'url': 'https://api.github.com/user',
-              \ 'anonymous': 0,
-              \ 'token': '012345',
-              \}])
-      End
+    It confirm an authentication of {username} with {token}
+      let ret = s:sf._authenticate(
+            \ client,
+            \ 'username',
+            \ '012345', {
+            \   'verbose': 0,
+            \ }
+            \)
+      let args = client._request_args
+      Assert Equals(args, [{
+            \ 'headers': {
+            \   'Authorization': 'token 012345',
+            \ },
+            \ 'param': {},
+            \ 'method': 'GET',
+            \ 'url': 'https://api.github.com/user',
+            \}])
     End
   End
 End
