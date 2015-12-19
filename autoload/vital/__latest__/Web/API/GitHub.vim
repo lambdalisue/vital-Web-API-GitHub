@@ -13,19 +13,21 @@ function! s:_vital_loaded(V) abort " {{{
   let s:C = a:V.import('System.Cache')
   let s:J = a:V.import('Web.JSON')
   let s:H = a:V.import('Web.HTTP')
+  let s:T = a:V.import('DateTime')
 endfunction " }}}
 function! s:_vital_depends() abort " {{{
   return [
         \ 'System.Cache',
         \ 'Web.JSON',
         \ 'Web.HTTP',
+        \ 'DateTime',
         \]
 endfunction " }}}
+
 function! s:_throw(msgs) abort " {{{
   let msgs = type(a:msgs) == type([]) ? a:msgs : [a:msgs]
   throw printf('vital: Web.API.GitHub: %s', join(msgs, "\n"))
 endfunction " }}}
-
 function! s:_get_header(token) abort " {{{
   return empty(a:token) ? {} : { 'Authorization': 'token ' . a:token }
 endfunction " }}}
@@ -104,7 +106,7 @@ function! s:_interactive_authorize(client, username, ...) abort " {{{
     call s:_throw([
           \ printf(
           \   'Authorization as "%s" in "%s" has failed',
-          \   a:username, self.baseurl
+          \   a:username, a:client.baseurl
           \ ),
           \ printf('%s: %s', res.status, res.statusText),
           \ get(res.content, 'message', ''),
@@ -132,16 +134,163 @@ function! s:_authenticate(client, username, token, ...) abort " {{{
     call s:_throw([
           \ printf(
           \   'Authentication as "%s" in "%s" with a cached token has failed',
-          \   a:username, self.baseurl
+          \   a:username, a:client.baseurl
           \ ),
           \ printf('%s: %s', res.status, res.statusText),
           \ get(res.content, 'message', ''),
           \])
   endif
 endfunction " }}}
+function! s:_build_error_message(errors) abort " {{{
+  let error_message = []
+  for error in a:errors
+    let code = get(error, 'code', '')
+    if code ==# 'missing'
+      call add(error_message, printf(
+            \ 'A resource "%s" is missing',
+            \ get(error, 'resource', '?'),
+            \))
+    elseif code ==# 'missing_field'
+      call add(error_message, printf(
+            \ 'A required field "%s" on a resource "%s" is missing',
+            \ get(error, 'field', '?'),
+            \ get(error, 'resource', '?'),
+            \))
+    elseif code ==# 'invalid'
+      call add(error_message, printf(
+            \ 'The formatting of a field "%s" on a resource "%s" is invalid',
+            \ get(error, 'field', '?'),
+            \ get(error, 'resource', '?'),
+            \))
+    elseif code ==# 'already_exists'
+      call add(error_message, printf(
+            \ 'The value of a field "%s" on a resource "%s" already exists',
+            \ get(error, 'field', '?'),
+            \ get(error, 'resource', '?'),
+            \))
+    else
+      " Unknown error type
+      call add(error_message, string(code))
+    endif
+  endfor
+  return join(error_message, "\n")
+endfunction " }}}
+function! s:_build_rate_limit_message(rate_limit, ...) abort " {{{
+  if get(a:rate_limit, 'remaining', 1)
+    return ''
+  endif
+  let now_dt   = get(a:000, 0, {})
+  let reset_dt = s:T.from_unix_time(a:rate_limit.reset)
+  let duration = reset_dt.delta(empty(now_dt) ? s:T.now() : now_dt)
+  return printf(
+        \ 'Try again %s, or login to use authenticated request',
+        \ duration.about(),
+        \)
+endfunction " }}}
 
+" Public functions
+function! s:new(...) abort " {{{
+  let options = extend({
+        \ 'baseurl': s:config.baseurl,
+        \ 'authorize_scopes': s:config.authorize_scopes,
+        \ 'authorize_note': s:config.authorize_note,
+        \ 'authorize_note_url': s:config.authorize_note_url,
+        \ 'token_cache': s:C.new('memory'),
+        \ 'skip_authentication': s:config.skip_authentication,
+        \}, get(a:000, 0, {}),
+        \)
+  return extend(deepcopy(s:client), options)
+endfunction " }}}
+function! s:get_config() abort " {{{
+  return deepcopy(s:config)
+endfunction " }}}
+function! s:set_config(config) abort " {{{
+  call extend(s:config, a:config)
+endfunction " }}}
+
+function! s:parse_response(response) abort " {{{
+  return {
+        \ 'etag': s:parse_response_etag(a:response),
+        \ 'link': s:parse_response_link(a:response),
+        \ 'last_modified': s:parse_response_last_modified(a:response),
+        \ 'rate_limit': s:parse_response_rate_limit(a:response),
+        \}
+endfunction " }}}
+function! s:parse_response_etag(response) abort " {{{
+  return matchstr(
+        \ matchstr(a:response.header, '^ETag:'),
+        \ '^ETag: \zs.*$',
+        \)
+endfunction " }}}
+function! s:parse_response_link(response) abort " {{{
+  " https://developer.github.com/guides/traversing-with-pagination/#navigating-through-the-pages
+  let bits = split(matchstr(a:response.header, '^Link:'), ',')
+  let links = {}
+  for bit in bits
+    let m = matchlist(bit, '<\(.*\)>; rel="\(.*\)"')
+    if empty(m)
+      continue
+    endif
+    let links[m[2]] = m[1]
+  endfor
+  return links
+endfunction " }}}
+function! s:parse_response_rate_limit(response) abort " {{{
+  let limit = matchstr(
+        \ matchstr(a:response.header, '^X-RateLimit-Limit:'),
+        \ '^X-RateLimit-Limit: \zs\d\+$'
+        \)
+  let remaining = matchstr(
+        \ matchstr(a:response.header, '^X-RateLimit-Remaining:'),
+        \ '^X-RateLimit-Remaining: \zs\d\+$'
+        \)
+  let reset = matchstr(
+        \ matchstr(a:response.header, '^X-RateLimit-Reset:'),
+        \ '^X-RateLimit-Reset: \zs\d\+$'
+        \)
+  if empty(limit) && empty(remaining) && empty(reset)
+    return {}
+  endif
+  return {
+        \ 'limit': empty(limit) ? 0 : str2nr(limit),
+        \ 'remaining': empty(remaining) ? 0 : str2nr(remaining),
+        \ 'reset': empty(reset) ? 0 : str2nr(reset),
+        \}
+endfunction " }}}
+function! s:parse_response_last_modified(response) abort " {{{
+  return matchstr(
+        \ matchstr(a:response.header, '^Last-Modified:'),
+        \ '^Last-Modified: \zs.*$'
+        \)
+endfunction " }}}
+
+function! s:build_exception_message(response, ...) abort " {{{
+  let a:response.content = get(a:response, 'content', {})
+  let content = type(a:response.content) == type('')
+        \ ? empty(a:response.content) ? {} : s:J.decode(a:response.content)
+        \ : a:response.content
+  let message = get(content, 'message', '')
+  let error_message = s:_build_error_message(get(content, 'errors', []))
+  let rate_limit_message = s:_build_rate_limit_message(
+        \ s:parse_response_rate_limit(a:response),
+        \ get(a:000, 0, {})
+        \)
+  let documentation_url = get(content, 'documentation_url', '')
+  let messages = [
+        \ empty(message)
+        \   ? printf('%s: %s', a:response.status, a:response.statusText)
+        \   : printf('%s: %s: %s', a:response.status, a:response.statusText, message),
+        \ error_message,
+        \ rate_limit_message,
+        \ empty(documentation_url)
+        \   ? ''
+        \   : printf('%s might help you resolve the error', documentation_url)
+        \]
+  return join(filter(messages, '!empty(v:val)'), "\n")
+endfunction " }}}
+
+" Instance
 let s:client = {}
-" User can override the following methods
 function! s:client.get_authorize_scopes() abort " {{{
   " See available scopes at
   " https://developer.github.com/v3/oauth/#scopes
@@ -154,7 +303,6 @@ function! s:client.get_authorize_note_url() abort " {{{
   return self.authorize_note_url
 endfunction " }}}
 
-" Private methods
 function! s:client._set_token(username, token) abort " {{{
   if empty(a:token)
     return self.token_cache.remove(a:username)
@@ -166,7 +314,6 @@ function! s:client._set_authorized_username(username) abort " {{{
   let self._authorized_username = a:username
 endfunction " }}}
 
-" Public methods
 function! s:client.is_authorized() abort " {{{
   return !empty(self.get_authorized_username())
 endfunction " }}}
@@ -204,7 +351,7 @@ function! s:client.login(username, ...) abort " {{{
     return
   endif
 
-  let token = s:_interactive_authorize(a:client, a:username, options)
+  let token = s:_interactive_authorize(self, a:username, options)
   if empty(token)
     throw s:_throw('Login canceled by user')
   endif
@@ -322,25 +469,6 @@ function! s:client.delete(url, ...) abort " {{{
         \}, get(a:000, 2, {}),
         \)
   return self.request(settings)
-endfunction " }}}
-
-function! s:new(...) abort " {{{
-  let options = extend({
-        \ 'baseurl': s:config.baseurl,
-        \ 'authorize_scopes': s:config.authorize_scopes,
-        \ 'authorize_note': s:config.authorize_note,
-        \ 'authorize_note_url': s:config.authorize_note_url,
-        \ 'token_cache': s:C.new('memory'),
-        \ 'skip_authentication': s:config.skip_authentication,
-        \}, get(a:000, 0, {}),
-        \)
-  return extend(deepcopy(s:client), options)
-endfunction " }}}
-function! s:get_config() abort " {{{
-  return deepcopy(s:config)
-endfunction " }}}
-function! s:set_config(config) abort " {{{
-  call extend(s:config, a:config)
 endfunction " }}}
 
 let &cpoptions = s:save_cpo

@@ -3,6 +3,7 @@ let s:J = s:V.import('Web.JSON')
 let s:G = s:V.import('Web.API.GitHub')
 let s:P = s:V.import('System.Filepath')
 let s:S = s:V.import('Vim.ScriptLocal')
+let s:T = s:V.import('DateTime')
 let s:sv = s:S.svars(s:P.realpath(s:P.abspath(
       \ 'autoload/vital/__latest__/Web/API/GitHub.vim',
       \)))
@@ -11,67 +12,6 @@ let s:sf = s:S.sfuncs(s:P.realpath(s:P.abspath(
       \)))
 
 Describe Web.API.GitHub
-  Context .get_config()
-    It returns a config dictionary
-      let ret = s:G.get_config()
-      Assert IsDict(ret)
-      Assert KeyExists(ret, 'baseurl')
-      Assert KeyExists(ret, 'authorize_scopes')
-      Assert KeyExists(ret, 'authorize_note')
-      Assert KeyExists(ret, 'authorize_note_url')
-      Assert KeyExists(ret, 'skip_authentication')
-    End
-  End
-
-  Context .set_config({config})
-    It overrides a config dictionary
-      let old_config = s:G.get_config()
-      let new_config = {
-            \ 'baseurl': 'foobar',
-            \ 'authorize_scopes': ['foo'],
-            \ 'authorize_note': 'hello',
-            \ 'authorize_note_url': 'hoge',
-            \ 'skip_authentication': 1,
-            \}
-      try
-        call s:G.set_config(new_config)
-        let ret = s:G.get_config()
-        Assert Equals(ret.baseurl, 'foobar')
-        Assert Equals(ret.authorize_scopes, ['foo'])
-        Assert Equals(ret.authorize_note, 'hello')
-        Assert Equals(ret.authorize_note_url, 'hoge')
-        Assert Equals(ret.skip_authentication, 1)
-      finally
-        call s:G.set_config(old_config)
-      endtry
-    End
-  End
-
-  Context .new({options})
-    It returns a client object
-      let ret = s:G.new()
-      Assert IsDict(ret)
-      Assert KeyExists(ret, 'baseurl')
-      Assert KeyExists(ret, 'authorize_scopes')
-      Assert KeyExists(ret, 'authorize_note')
-      Assert KeyExists(ret, 'authorize_note_url')
-      Assert KeyExists(ret, 'skip_authentication')
-      " Public methods
-      Assert KeyExists(ret, 'is_authorized')
-      Assert KeyExists(ret, 'get_absolute_url')
-      Assert KeyExists(ret, 'get_token')
-      Assert KeyExists(ret, 'get_authorized_username')
-      Assert KeyExists(ret, 'login')
-      Assert KeyExists(ret, 'logout')
-      Assert KeyExists(ret, 'request')
-      Assert KeyExists(ret, 'get')
-      Assert KeyExists(ret, 'post')
-      Assert KeyExists(ret, 'put')
-      Assert KeyExists(ret, 'patch')
-      Assert KeyExists(ret, 'delete')
-    End
-  End
-
   Context [PRIVATE] s:_authorize({client}, {username}, {password}[, {options})
     Before
       let client = s:G.new()
@@ -148,7 +88,6 @@ Describe Web.API.GitHub
             \}])
     End
   End
-
   Context [PRIVATE] s:_authenticate({client}, {username}, {token}[, {options})
     Before
       let client = s:G.new()
@@ -179,6 +118,409 @@ Describe Web.API.GitHub
             \ 'method': 'GET',
             \ 'url': 'https://api.github.com/user',
             \}])
+    End
+  End
+  Context [PRIVATE] s:_build_error_message({errors})
+    It build an error message for 'missing'
+      let errors = [{
+            \ 'code': 'missing',
+            \ 'resource': 'Issue',
+            \}]
+      let ret = s:sf._build_error_message(errors)
+      Assert Equals(ret,
+            \ 'A resource "Issue" is missing'
+            \)
+    End
+    It build an error message for 'missing_field'
+      let errors = [{
+            \ 'code': 'missing_field',
+            \ 'field': 'title',
+            \ 'resource': 'Issue',
+            \}]
+      let ret = s:sf._build_error_message(errors)
+      Assert Equals(ret,
+            \ 'A required field "title" on a resource "Issue" is missing'
+            \)
+    End
+    It build an error message for 'invalid'
+      let errors = [{
+            \ 'code': 'invalid',
+            \ 'field': 'title',
+            \ 'resource': 'Issue',
+            \}]
+      let ret = s:sf._build_error_message(errors)
+      Assert Equals(ret,
+            \ 'The formatting of a field "title" on a resource "Issue" is invalid'
+            \)
+    End
+    It build an error message for 'already_exists'
+      let errors = [{
+            \ 'code': 'already_exists',
+            \ 'field': 'title',
+            \ 'resource': 'Issue',
+            \}]
+      let ret = s:sf._build_error_message(errors)
+      Assert Equals(ret,
+            \ 'The value of a field "title" on a resource "Issue" already exists'
+            \)
+    End
+  End
+  Context [PRIVATE] s:_build_rate_limit_message({rate_limit}[, {now_datetime}])
+    It return an empty string if {rate_limit.remaining} is greater than 0
+      let rate_limit = {
+            \ 'limit': 60,
+            \ 'remaining': 56,
+            \ 'reset': 1372700873,
+            \}
+      let ret = s:sf._build_rate_limit_message(rate_limit)
+      Assert Equals(ret, '')
+    End
+    It build an rate limit message
+      let rate_limit = {
+            \ 'limit': 60,
+            \ 'remaining': 0,
+            \ 'reset': 1372700873,
+            \}
+      let now_dt = s:T.from_unix_time(1372700863)
+      let ret = s:sf._build_rate_limit_message(rate_limit, now_dt)
+      Assert Equals(ret,
+            \ 'Try again 10 seconds later, or login to use authenticated request'
+            \)
+    End
+  End
+
+  Context .new({options})
+    It returns a client object
+      let ret = s:G.new()
+      Assert IsDict(ret)
+      Assert KeyExists(ret, 'baseurl')
+      Assert KeyExists(ret, 'authorize_scopes')
+      Assert KeyExists(ret, 'authorize_note')
+      Assert KeyExists(ret, 'authorize_note_url')
+      Assert KeyExists(ret, 'skip_authentication')
+      " Public methods
+      Assert KeyExists(ret, 'is_authorized')
+      Assert KeyExists(ret, 'get_absolute_url')
+      Assert KeyExists(ret, 'get_token')
+      Assert KeyExists(ret, 'get_authorized_username')
+      Assert KeyExists(ret, 'login')
+      Assert KeyExists(ret, 'logout')
+      Assert KeyExists(ret, 'request')
+      Assert KeyExists(ret, 'get')
+      Assert KeyExists(ret, 'post')
+      Assert KeyExists(ret, 'put')
+      Assert KeyExists(ret, 'patch')
+      Assert KeyExists(ret, 'delete')
+    End
+  End
+  Context .get_config()
+    It returns a config dictionary
+      let ret = s:G.get_config()
+      Assert IsDict(ret)
+      Assert KeyExists(ret, 'baseurl')
+      Assert KeyExists(ret, 'authorize_scopes')
+      Assert KeyExists(ret, 'authorize_note')
+      Assert KeyExists(ret, 'authorize_note_url')
+      Assert KeyExists(ret, 'skip_authentication')
+    End
+  End
+  Context .set_config({config})
+    It overrides a config dictionary
+      let old_config = s:G.get_config()
+      let new_config = {
+            \ 'baseurl': 'foobar',
+            \ 'authorize_scopes': ['foo'],
+            \ 'authorize_note': 'hello',
+            \ 'authorize_note_url': 'hoge',
+            \ 'skip_authentication': 1,
+            \}
+      try
+        call s:G.set_config(new_config)
+        let ret = s:G.get_config()
+        Assert Equals(ret.baseurl, 'foobar')
+        Assert Equals(ret.authorize_scopes, ['foo'])
+        Assert Equals(ret.authorize_note, 'hello')
+        Assert Equals(ret.authorize_note_url, 'hoge')
+        Assert Equals(ret.skip_authentication, 1)
+      finally
+        call s:G.set_config(old_config)
+      endtry
+    End
+  End
+
+  Context .parse_response_etag({response})
+    " https://developer.github.com/v3/#conditional-requests
+    It return a string of 'ETag' header
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'ETag: "644b5b0155e6404a9cc4bd9d8b1ae730"',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_etag(response)
+      Assert Equals(ret, '"644b5b0155e6404a9cc4bd9d8b1ae730"')
+    End
+    It return an empty string if 'ETag' header is missing
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_etag(response)
+      Assert Equals(ret, '')
+    End
+  End
+  Context .parse_response_link({response})
+    " https://developer.github.com/guides/traversing-with-pagination
+    It return a dict of 'Link' header
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ printf('Link: %s, %s, %s, %s',
+            \   '<https://api.github.com/resource&page=15>; rel="next"',
+            \   '<https://api.github.com/resource&page=34>; rel="last"',
+            \   '<https://api.github.com/resource&page=1>; rel="first"',
+            \   '<https://api.github.com/resource&page=13>; rel="prev"',
+            \ ),
+            \ 'ETag: "644b5b0155e6404a9cc4bd9d8b1ae730"',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_link(response)
+      Assert Equals(ret, {
+            \ 'next': 'https://api.github.com/resource&page=15',
+            \ 'last': 'https://api.github.com/resource&page=34',
+            \ 'first': 'https://api.github.com/resource&page=1',
+            \ 'prev': 'https://api.github.com/resource&page=13',
+            \})
+    End
+    It return an empty dict if 'Link' header is missing
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_link(response)
+      Assert Equals(ret, {})
+    End
+  End
+  Context .parse_response_rate_limit({response})
+    " https://developer.github.com/v3/#rate-limiting
+    It return a dict of 'X-RateLimit-.*' header
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'ETag: "644b5b0155e6404a9cc4bd9d8b1ae730"',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_rate_limit(response)
+      Assert Equals(ret, {
+            \ 'limit': 5000,
+            \ 'remaining': 4996,
+            \ 'reset': 1372700873,
+            \})
+    End
+    It return an empty dict if 'X-RateLimit-.*' header is missing
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_rate_limit(response)
+      Assert Equals(ret, {})
+    End
+    It return a dict filled with 0 if 'X-RateLimit-.*' header is partially missing
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_rate_limit(response)
+      Assert Equals(ret, {
+            \ 'limit': 5000,
+            \ 'remaining': 4996,
+            \ 'reset': 0,
+            \})
+    End
+  End
+  Context .parse_response_last_modified({response})
+    " https://developer.github.com/v3/#conditional-requests
+    It return a string of 'Last-Modified' header
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'ETag: "644b5b0155e6404a9cc4bd9d8b1ae730"',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_last_modified(response)
+      Assert Equals(ret, 'Thu, 05 Jul 2012 15:31:30 GMT')
+    End
+    It return an empty string if 'Last-Modified' header is missing
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response_last_modified(response)
+      Assert Equals(ret, '')
+    End
+  End
+  Context .parse_response({response})
+    " https://developer.github.com/v3/#conditional-requests
+    It return a dict which contains aboves
+      let header = [
+            \ 'HTTP/1.1 200 OK',
+            \ 'Cache-Control: private, max-age=60',
+            \ printf('Link: %s, %s, %s, %s',
+            \   '<https://api.github.com/resource&page=15>; rel="next"',
+            \   '<https://api.github.com/resource&page=34>; rel="last"',
+            \   '<https://api.github.com/resource&page=1>; rel="first"',
+            \   '<https://api.github.com/resource&page=13>; rel="prev"',
+            \ ),
+            \ 'ETag: "644b5b0155e6404a9cc4bd9d8b1ae730"',
+            \ 'Last-Modified: Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'Status: 200 OK',
+            \ 'Vary: Accept, Authorization, Cookie',
+            \ "X-RateLimit-Limit: 5000",
+            \ "X-RateLimit-Remaining: 4996",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = { 'header': header }
+      let ret = s:G.parse_response(response)
+      Assert Equals(ret, {
+            \ 'etag': '"644b5b0155e6404a9cc4bd9d8b1ae730"',
+            \ 'last_modified': 'Thu, 05 Jul 2012 15:31:30 GMT',
+            \ 'link': {
+            \   'next': 'https://api.github.com/resource&page=15',
+            \   'last': 'https://api.github.com/resource&page=34',
+            \   'first': 'https://api.github.com/resource&page=1',
+            \   'prev': 'https://api.github.com/resource&page=13',
+            \ },
+            \ 'rate_limit': {
+            \   'limit': 5000,
+            \   'remaining': 4996,
+            \   'reset': 1372700873,
+            \ },
+            \})
+    End
+  End
+
+  Context .build_exception_message({response}[, {now_datetime}])
+    " https://developer.github.com/v3/#client-errors
+    It build an exception message (Case 1)
+      let header = []
+      let response = {
+            \ 'header': header,
+            \ 'status': 404,
+            \ 'statusText': 'Not Found',
+            \}
+      let ret = s:G.build_exception_message(response)
+      Assert Equals(ret, '404: Not Found')
+    End
+    It build an exception message (Case 2)
+      let header = []
+      let response = {
+            \ 'header': header,
+            \ 'status': 400,
+            \ 'statusText': 'Bad Request',
+            \ 'content': '{"message":"Problems parsing JSON"}',
+            \}
+      let ret = s:G.build_exception_message(response)
+      Assert Equals(ret, '400: Bad Request: Problems parsing JSON')
+    End
+    It build an exception message (Case 3)
+      let header = []
+      let response = {
+            \ 'header': header,
+            \ 'status': 422,
+            \ 'statusText': 'Unprocessable Entity',
+            \ 'content': {
+            \   'message': 'Validation Failed',
+            \   'errors': [
+            \     {
+            \       'resource': 'Issue',
+            \       'field': 'title',
+            \       'code': 'missing_field'
+            \     }
+            \   ]
+            \ }
+            \}
+      let ret = s:G.build_exception_message(response)
+      Assert Equals(ret, join([
+            \ '422: Unprocessable Entity: Validation Failed',
+            \ 'A required field "title" on a resource "Issue" is missing',
+            \], "\n"))
+    End
+    It build an exception message (Case 4)
+      let header = [
+            \ "X-RateLimit-Limit: 60",
+            \ "X-RateLimit-Remaining: 0",
+            \ "X-RateLimit-Reset: 1372700873",
+            \]
+      let response = {
+            \ 'header': header,
+            \ 'status': 403,
+            \ 'statusText': 'Forbidden',
+            \ 'content': {
+            \   'message': 'API rate limit exceeded for xxx.xxx.xxx.xxx.',
+            \   'documentation_url': 'https://developer.github.com/v3/#rate-limiting'
+            \ },
+            \}
+      let now_dt = s:T.from_unix_time(1372700863)
+      let ret = s:G.build_exception_message(response, now_dt)
+      Assert Equals(ret, join([
+            \ '403: Forbidden: API rate limit exceeded for xxx.xxx.xxx.xxx.',
+            \ 'Try again 10 seconds later, or login to use authenticated request',
+            \ 'https://developer.github.com/v3/#rate-limiting might help you resolve the error',
+            \], "\n"))
     End
   End
 End
