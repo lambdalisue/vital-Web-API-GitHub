@@ -1,6 +1,6 @@
 *vital-web-api-github.txt*	A GitHub API client
 
-Version: 0.2.0
+Version: 0.1.0
 Author:  Alisue <lambdalisue@hashnote.net>	*Vital.Web.API.GitHub-author*
 Support: Vim 7.3 and above
 License: MIT license  {{{
@@ -37,16 +37,363 @@ Functions			|Vital.Web.API.GitHub-functions|
 ==============================================================================
 INTRODUCTIONS				*Vital.Web.API.GitHub-introductions*
 
-WIP
+This vital module is for helping developers who want to develop plugins which
+manipulate with GitHub API.
+It provides a basic authentication/authorization procedure and an authorizable
+client instance.
 
 ==============================================================================
 USAGE					*Vital.Web.API.GitHub-usage*
 
-WIP
+Create a client instance with |Vital.Web.API.GitHub.new()|, and then request
+the API response with get, post, or whatever provided by the client.
+The following code get a most recent public gist (only page=1):
+>
+	let s:J = s:V.import('Web.JSON')
+	let s:G = s:V.import('Web.API.GitHub')
+	let s:client = s:G.new()
 
-==============================================================================
+	" Request 'public' gists as an anonymous user
+	let response = s:client.get('gists')
+	let partial_entries = s:J.decode(response.content)
+	
+	" Request your gists
+	call s:client.login('your_user_name')
+	let response = s:client.get('gists')
+	let partial_entries = s:J.decode(response.content)
+	
+	" Request 'public' gists as an anonymous user
+	call s:client.logout()
+	let response = s:client.get('gists')
+	let partial_entries = s:J.decode(response.content)
+<
+If you would like to retrieve all entries of a particular URL, use retrieve()
+method like:
+>
+	let entries = s:client.retrieve('gists')
+<
+Note that the retrieve() returns an JSON parsed object while get, post or
+other methods return a response object.
+
+-------------------------------------------------------------------------------
 FUNCTIONS				*Vital.Web.API.GitHub-functions*
 
-WIP
+new({options})			*Vital.Web.API.GitHub.new()*
 
+	Return a new client instance for GitHub API.
+	The following options are available in {options}.
+
+	'baseurl'
+	A root endpoint URL of an API.
+	'https://api.github.com' is for a GitHub API.
+	'https://yourdomain.com/api/v3' is for GitHub Enterprise API.
+	The default value is 'https://api.github.com'
+
+	'authorize_scopes'
+	A |List| indicating scopes used to create a new authorization.
+	See https://developer.github.com/v3/oauth_authorizations/
+
+	'authorize_note'
+	A |String| used to create a new authorization. This value must be
+	unique.
+	See https://developer.github.com/v3/oauth_authorizations/
+
+	'authorize_note_url'
+	A |String| URL used to create a new authorization to remind you
+	what app the OAuth token is for.
+	See https://developer.github.com/v3/oauth_authorizations/
+
+	'skip_authentication'
+	1 to skip authentication step if the specified user already has a
+	cached token. Use it to accelerate the response.
+
+	'retrieve_per_page'
+	A |Number| indicating the number of entries per page when .retrieve()
+	method is called.
+	The default value is 100, which seems a maximum value for GitHub API.
+	See. |Vital.Web.API.GitHub.retrieve()|.
+
+	'retrieve_indicator'
+	A |String| indicator which is used in .retrieve() method.
+	It may contain the following special characters:
+	'%(url)s'        - It will be substituted to a URL accessing
+	'%%(page)d'      - It will be substituted to a page number.
+	'%(page_count)d' - It will be substituted to a total number of pages.
+	The default value is:
+	'Requesting entries from %(url)s [%%(page)d/%(page_count)d]'
+	See. |Vital.Web.API.GitHub.retrieve()|.
+
+	'retrieve_python'
+	1 to use python version of retrieve (much faster).
+	2 to force to use |python| and 3 to force to use |python3|.
+	The default value is 1 when +python or +python3, otherwise 0.
+	See. |Vital.Web.API.GitHub.retrieve()|.
+
+	'retrieve_python_nprocess'
+	The number of thread used in .retrieve() function when python version
+	is used.
+	The default value is 50.
+	See. |Vital.Web.API.GitHub.retrieve()|.
+
+	'token_cache'
+	An instance of |Vital.System.Cache|.
+	The default value is an instance of |Vital.System.Cache.Memory|.
+
+get_config()			*Vital.Web.API.GitHub.get_config()*
+
+	Return a default value of {options} of |Vital.Web.API.GitHub.new()|.
+
+get_config({options})		*Vital.Web.API.GitHub.get_config()*
+
+	Set a default value of {options} of |Vital.Web.API.GitHub.new()|.
+
+parse_response({response}	*Vital.Web.API.GitHub.parse_response()*
+
+	Parse a response of request methods of |Vital.Web.HTTP| or an instance
+	of GitHub API client returns from |Vital.Web.API.GitHub.new()|.
+	The return |Dictionary| contains the followings:
+
+	'etag'
+	Return value of |Vital.Web.API.GitHub.parse_response_etag()|.
+	'link'
+	Return value of |Vital.Web.API.GitHub.parse_response_link()|.
+	'rate_limit'
+	Return value of |Vital.Web.API.GitHub.parse_response_rate_limit()|.
+	'last_modified'
+	Return value of |Vital.Web.API.GitHub.parse_response_last_modified()|.
+
+parse_response_etag({response}	*Vital.Web.API.GitHub.parse_response_etag()*
+
+	Return a |String| value of ETag header.
+
+parse_response_link({response}	*Vital.Web.API.GitHub.parse_response_link()*
+
+	Return a |Dictionary| value of Link header.
+	Dictionary keys represent rel value of each link.
+>
+	echo client.parse_response_link(response)
+	" => {
+	"  'next': 'https://api.github.com/resources?page=2',
+	"  'last': 'https://api.github.com/resources?page=5',
+	" }
+<
+			*Vital.Web.API.GitHub.parse_response_rate_limit()*
+parse_response_rate_limit({response})
+
+	Return a |Dictionary| value of X-RateLimit-XXX headers.
+>
+	echo client.parse_response_rate_limit(response)
+	" => {
+	"  'limit': 60,
+	"  'remaining': 59,
+	"  'reset': 334513125,
+	" }
+<
+			*Vital.Web.API.GitHub.parse_response_last_modified()*
+parse_response_last_modified({response}
+
+	Return a |String| value of Last-Modified header.
+
+			*Vital.Web.API.GitHub.build_exception_message()*
+build_exception_message({response})
+
+	Return a user-friendly exception message of {response}.
+
+-------------------------------------------------------------------------------
+METHODS					*Vital.Web.API.GitHub-methods*
+
+			*Vital.Web.API.GitHub-instance.get_authorize_scopes()*
+get_authorize_scopes()
+
+	Return an authorize scopes specified in {options} of .new() function.
+	Developer can override this method to return context depend scopes.
+
+			*Vital.Web.API.GitHub-instance.get_authorize_note()*
+get_authorize_note()
+
+	Return an authorize note specified in {options} of .new() function.
+	Developer can override this method to return context depend note.
+
+			*Vital.Web.API.GitHub-instance.get_authorize_note_url()*
+get_authorize_note_url()
+
+	Return an authorize note_url specified in {options} of .new() function.
+	Developer can override this method to return context depend note_url.
+
+			*Vital.Web.API.GitHub-instance.get_absolute_url()*
+get_absolute_url({relative_url})
+
+	Return an absolute url of {relative_url} in the API.
+
+			*Vital.Web.API.GitHub-instance.is_authorized()*
+is_authorized()
+
+	Return 1 if the client is authorized.
+
+			*Vital.Web.API.GitHub-instance.get_token()*
+get_token([{username}])
+
+	Return a personal access token of {username} or a current username.
+	It returns an empty string if the client has not been authorized with
+	{username}.
+
+			*Vital.Web.API.GitHub-instance.get_header()*
+get_header({username})
+
+	Return a |Dictionary| header used for authenticated request of
+	{username} or a current username.
+	It returns an empty dictionary if the client has not been authorized
+	with {username}.
+
+		*Vital.Web.API.GitHub-instance.get_authorized_username()*
+get_authorized_username()
+
+	Return an authorized username or an empty string.
+
+
+		*Vital.Web.API.GitHub-instance.login()*
+login({username}[, {options}])
+
+	Login into the API with {username}.
+	It does nothing if {username} is already logged in unless 'force'
+	option is specified.
+	It might throw a 'vital: Web.API.GitHub: Login canceled by user'
+	exception when user cancel the login.
+	The following options are available in {options}:
+
+	'force'
+	1 to force to re-login even if the {username} is already logged in.
+	The default value is 0.
+	'verbose'
+	1 to echo current status indicators and extra informations.
+	The default value is 1.
+	'skip_authentication'
+	1 to skip authentication step which will be pefromed when {username}
+	has not logged in yet but a personal access token for {username} is
+	found in a cache.
+	The default value is depends on the value specified to .new() method.
+	See |Vital.Web.API.GitHub.new()|.
+
+		*Vital.Web.API.GitHub-instance.logout()*
+logout([{options}])
+
+	Logout from the API.
+	The following option is avaiable in {options}:
+
+	'permanent'
+	1 to remove a personal access token of the current authorized username
+	from a cache.
+	The default value is 0.
+
+		*Vital.Web.API.GitHub-instance.request()*
+request({settings})
+request({url} [, {settings}])
+request({method}, {url} [, {settings}])
+
+	Call |Vital.Web.HTTP.request()| internally with the following difference:
+
+	1. With an authenticated header if user has logged in API
+	2. With an absolute URL of a relative URL from 'baseurl' of the client
+
+	See |Vital.Web.HTTP.request()| for more detail.
+
+		*Vital.Web.API.GitHub-instance.head()*
+head({url} [, {param} [, {header}]])
+
+	Send a HEAD request. The {param} is a URL parameter |Dictionary|.
+	This is just a wrapper of |Vital.Web.API.GitHub-instance.request()|
+
+		*Vital.Web.API.GitHub-instance.get()*
+get({url} [, {param} [, {header}]])
+
+	Send a GET request. The {param} is a URL parameter |Dictionary|.
+	This is just a wrapper of |Vital.Web.API.GitHub-instance.request()|
+
+		*Vital.Web.API.GitHub-instance.post()*
+post({url} [, {data} [, {header}]])
+
+	Send a POST request. The {data} is a data |Dictionary| which will be
+	encoded with |Vital.Web.JSON.encode()|.
+	This is just a wrapper of |Vital.Web.API.GitHub-instance.request()|
+
+		*Vital.Web.API.GitHub-instance.put()*
+put({url} [, {data} [, {header}]])
+
+	Send a PUT request. The {data} is a data |Dictionary| which will be
+	encoded with |Vital.Web.JSON.encode()|.
+	This is just a wrapper of |Vital.Web.API.GitHub-instance.request()|
+
+		*Vital.Web.API.GitHub-instance.patch()*
+patch({url} [, {data} [, {header}]])
+
+	Send a PATCH request. The {data} is a data |Dictionary| which will be
+	encoded with |Vital.Web.JSON.encode()|.
+	This is just a wrapper of |Vital.Web.API.GitHub-instance.request()|
+
+		*Vital.Web.API.GitHub-instance.delete()*
+delete({url} [, {param} [, {header}]])
+
+	Send a DELETE request. The {param} is a URL parameter |Dictionary|.
+	This is just a wrapper of |Vital.Web.API.GitHub-instance.request()|
+
+		*Vital.Web.API.GitHub-instance.retrieve()*
+retrieve({settings})
+retrieve({url} [, {settings}])
+retrieve({method}, {url} [, {settings}])
+
+	Recursively request content of {url} and further specified by 'page'
+	URL parameter (See https://developer.github.com/v3/#pagination) and
+	return |List| entries of entire content within the specified range.
+
+	Note that this method returns a JSON decoded content of the response
+	and un-successed response throws an exception. It is contrust to the
+	other methods which returns a response object and does not throw
+	exceptions for bad requests.
+
+	Note that the API rate limit of anonymous user is strictlly limited so
+	users should not use an anonymous request with this method while this
+	method recursively request contents and will reach to the rate limit.
+
+	The following settings are available in {settings}, addition to
+	settings of |Vital.Web.HTTP.request()|.
+
+	'verbose'
+	1 to echo status indicators and extra informations.
+	The default value is 1.
+
+	'page_start'
+	A |Number| indicatin a start page. Retrieve start from this page.
+	The default value is 1.
+
+	'page_end'
+	A |Number| indicatin a end page. Retrieve end at this page.
+	0 to request the number of pages and retrieve until the end of page of
+	entire content.
+	The default value is 0.
+
+	'indicator'
+	A |String| indicator which is used in to echo the current status.
+	It may contain the following special characters:
+	'%(url)s'        - It will be substituted to a URL accessing
+	'%%(page)d'      - It will be substituted to a page number.
+	'%(page_count)d' - It will be substituted to a total number of pages.
+	The default value is inherited from 'retrieve_indicator' of the client
+	instance.
+	See |Vital.Web.API.GitHub.new()|
+
+	'python'
+	1 to select available python automatically to enable python version of
+	retrieve. 2 to force |python| and 3 to force |python3|. 0 to disable
+	python version of retrieve.
+	The default value is inherited from 'retrieve_python' of the client
+	instance.
+	See |Vital.Web.API.GitHub.new()|
+
+	'python_nprocess'
+	The number of thread/process used in python version of retrieve.
+	The default value is inherited from 'retrieve_python_nprocess' of the
+	client instance.
+	See |Vital.Web.API.GitHub.new()|
+
+===============================================================================
 vim:tw=78:fo=tcq2mM:ts=8:ft=help:norl

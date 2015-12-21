@@ -192,15 +192,14 @@ Describe Web.API.GitHub
             \)
     End
   End
-  Context [PRIVATE] s:_retrieve_vim({client}, {url}, {params}, {headers}, {settings)
+  Context [PRIVATE] s:_retrieve_vim({client}, {settings)
     It return 300 public gist entries (100 entries per page)
       let client = s:G.new()
-      let url = 'gists/public'
-      let params = {
-            \ 'per_page': 100,
-            \}
-      let headers = {}
       let settings = {
+            \ 'url': 'gists/public',
+            \ 'param': {
+            \   'per_page': 100,
+            \ },
             \ 'verbose': 0,
             \ 'indicator': client.retrieve_indicator,
             \ 'python': 0,
@@ -256,9 +255,7 @@ Describe Web.API.GitHub
                 \}
         endfunction
       endif
-      let entries = s:sf._retrieve_vim(
-            \ client, url, params, headers, settings
-            \)
+      let entries = s:sf._retrieve_vim(client, settings)
       Assert Equals(len(entries), 300)
       if s:USE_PSEUDO_RESPONSE
         Assert Equals(entries, pseudo_entries)
@@ -270,15 +267,15 @@ Describe Web.API.GitHub
       It return 300 public gist entries (100 entries per page)
         let pseudo_entries = map(range(1, 300), '{ "id": v:val }')
         let client = s:G.new()
-        let url = 'gists/public'
-        let params = {
-              \ 'per_page': 100,
-              \}
-        let headers = {}
         let settings = {
+              \ 'url': 'gists/public',
+              \ 'param': {
+              \   'per_page': 100,
+              \ },
               \ 'verbose': 0,
               \ 'indicator': client.retrieve_indicator,
               \ 'python': 1,
+              \ 'python_nprocess': 50,
               \ 'page_start': 1,
               \ 'page_end': 3,
               \}
@@ -288,9 +285,7 @@ Describe Web.API.GitHub
           " define '_vim_vital_web_api_github_test_pseudo_request'
           execute s:Y.exec_file(filename)
         endif
-        let entries = s:sf._retrieve_python(
-              \ client, url, params, headers, settings
-              \)
+        let entries = s:sf._retrieve_python(client, settings)
         Assert Equals(len(entries), 300)
         if s:USE_PSEUDO_RESPONSE
           Assert Equals(entries, pseudo_entries)
