@@ -254,8 +254,8 @@ function! s:_retrieve_vim(client, settings) abort " {{{
         \)
   return entries
 endfunction " }}}
+" @vimlint(EVL102, 1, l:kwargs)
 function! s:_retrieve_python(client, settings) abort " {{{
-  let filename = s:P.join(s:root, 'github.py')
   let kwargs = extend(copy(a:settings.param), {
         \ 'verbose': a:settings.verbose,
         \ 'url': a:client.get_absolute_url(a:settings.url),
@@ -275,6 +275,7 @@ function! s:_retrieve_python(client, settings) abort " {{{
   endif
   return namespace.entries
 endfunction " }}}
+" @vimlint(EVL102, 0, l:kwargs)
 
 " Public functions
 function! s:new(...) abort " {{{
