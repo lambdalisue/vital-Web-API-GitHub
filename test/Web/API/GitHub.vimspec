@@ -3,6 +3,7 @@ let s:J = s:V.import('Web.JSON')
 let s:G = s:V.import('Web.API.GitHub')
 let s:P = s:V.import('System.Filepath')
 let s:S = s:V.import('Vim.ScriptLocal')
+let s:Y = s:V.import('Vim.Python')
 let s:T = s:V.import('DateTime')
 let s:sv = s:S.svars(s:P.realpath(s:P.abspath(
       \ 'autoload/vital/__latest__/Web/API/GitHub.vim',
@@ -10,6 +11,9 @@ let s:sv = s:S.svars(s:P.realpath(s:P.abspath(
 let s:sf = s:S.sfuncs(s:P.realpath(s:P.abspath(
       \ 'autoload/vital/__latest__/Web/API/GitHub.vim',
       \)))
+
+" Use a pseudo response for 'retrieve' tests
+let s:USE_PSEUDO_RESPONSE = 1
 
 Describe Web.API.GitHub
   Context [PRIVATE] s:_authorize({client}, {username}, {password}[, {options})
@@ -187,6 +191,134 @@ Describe Web.API.GitHub
             \ 'Try again 10 seconds later, or login to use authenticated request'
             \)
     End
+  End
+  Context [PRIVATE] s:_retrieve_vim({client}, {url}, {params}, {headers}, {settings)
+    It return 300 public gist entries (100 entries per page)
+      let client = s:G.new()
+      let url = 'gists/public'
+      let params = {
+            \ 'per_page': 100,
+            \}
+      let headers = {}
+      let settings = {
+            \ 'verbose': 0,
+            \ 'indicator': client.retrieve_indicator,
+            \ 'python': 0,
+            \ 'page_start': 1,
+            \ 'page_end': 3,
+            \}
+      if s:USE_PSEUDO_RESPONSE
+        let settings.page_end = 0
+        " To prevent a real access, mock 'request' method and return a mock response
+        let pseudo_entries = map(range(1, 300), '{ "id": v:val }')
+        let client._pseudo_entries = pseudo_entries
+        function! client.request(settings) abort
+          let link_precursor = '<https://api.github.com/resource?page=%d>; rel="%s"'
+          let param = get(a:settings, 'param', {})
+          let page = get(param, 'page', 0)
+          if page == 0
+            let link = [
+                  \ printf(link_precursor, 2, 'next'),
+                  \ printf(link_precursor, 3, 'last'),
+                  \]
+            let entries = []
+          elseif page == 1
+            let link = [
+                  \ printf(link_precursor, 2, 'next'),
+                  \ printf(link_precursor, 3, 'last'),
+                  \]
+            let entries = self._pseudo_entries[0 : 99]
+          elseif page == 2
+            let link = [
+                  \ printf(link_precursor, 1, 'first'),
+                  \ printf(link_precursor, 1, 'prev'),
+                  \ printf(link_precursor, 3, 'next'),
+                  \ printf(link_precursor, 3, 'last'),
+                  \]
+            let entries = self._pseudo_entries[100 : 199]
+          elseif page == 3
+            let link = [
+                  \ printf(link_precursor, 1, 'first'),
+                  \ printf(link_precursor, 2, 'prev'),
+                  \]
+            let entries = self._pseudo_entries[200 : 299]
+          else
+            throw 'vital: Web.API.GitHub: Unexpected request'
+          endif
+          return {
+                \ 'header': [
+                \   printf('Link: %s', join(link, ',')),
+                \ ],
+                \ 'content': s:J.encode(entries),
+                \ 'status': 200,
+                \ 'statusText': 'OK',
+                \ 'success': 1,
+                \}
+        endfunction
+      endif
+      let entries = s:sf._retrieve_vim(
+            \ client, url, params, headers, settings
+            \)
+      Assert Equals(len(entries), 300)
+      if s:USE_PSEUDO_RESPONSE
+        Assert Equals(entries, pseudo_entries)
+      endif
+    End
+  End
+  Context [PRIVATE] s:_retrieve_python({client}, {url}, {params}, {headers}, {settings)
+    if has('python') || has('python3')
+      It return 300 public gist entries (100 entries per page)
+        let pseudo_entries = map(range(1, 300), '{ "id": v:val }')
+        let client = s:G.new()
+        let url = 'gists/public'
+        let params = {
+              \ 'per_page': 100,
+              \}
+        let headers = {}
+        let settings = {
+              \ 'verbose': 0,
+              \ 'indicator': client.retrieve_indicator,
+              \ 'python': 1,
+              \ 'page_start': 1,
+              \ 'page_end': 3,
+              \}
+        if s:USE_PSEUDO_RESPONSE
+          let settings.page_end = 0
+          let filename = s:P.realpath('test/Web/API/github.py')
+          " define '_vim_vital_web_api_github_test_pseudo_request'
+          execute s:Y.exec_file(filename)
+        endif
+        let entries = s:sf._retrieve_python(
+              \ client, url, params, headers, settings
+              \)
+        Assert Equals(len(entries), 300)
+        if s:USE_PSEUDO_RESPONSE
+          Assert Equals(entries, pseudo_entries)
+          " undefine '_vim_vital_web_api_github_test_pseudo_request'
+          execute s:Y.exec_code(
+                \ 'del globals()["_vim_vital_web_api_github_test_pseudo_request"]',
+                \)
+        endif
+      End
+    else
+      It throws an exception with -python/-python3
+        let sf = s:sf
+        let client = s:G.new()
+        let url = 'gists/public'
+        let params = {
+              \ 'per_page': 100,
+              \ 'page_count': 3,
+              \}
+        let headers = {}
+        let settings = {
+              \ 'verbose': 0,
+              \ 'indicator': client.retrieve_indicator,
+              \ 'python': 1,
+              \}
+        Throw /+python and/or +python3 is required/
+              \ sf._retrieve_python(client, url, params, headers, settings)
+      End
+    endif
   End
 
   Context .new({options})
