@@ -128,6 +128,7 @@ new({options})			*Vital.Web.API.GitHub.new()*
 	1 to use python version of retrieve (much faster).
 	2 to force to use |python| and 3 to force to use |python3|.
 	The default value is 1 when +python or +python3, otherwise 0.
+	It is not supported in Vim 7.3.600 or earlier.
 	See. |Vital.Web.API.GitHub.retrieve()|.
 
 	'retrieve_python_nprocess'

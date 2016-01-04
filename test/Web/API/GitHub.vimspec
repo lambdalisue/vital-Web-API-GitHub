@@ -263,57 +263,79 @@ Describe Web.API.GitHub
     End
   End
   Context [PRIVATE] s:_retrieve_python({client}, {settings})
-    if has('python') || has('python3')
-      It return 300 public gist entries (100 entries per page)
-        let pseudo_entries = map(range(1, 300), '{ "id": v:val }')
-        let client = s:G.new()
-        let settings = {
-              \ 'url': 'gists/public',
-              \ 'param': {
-              \   'per_page': 100,
-              \ },
-              \ 'verbose': 0,
-              \ 'indicator': client.retrieve_indicator,
-              \ 'python': 1,
-              \ 'python_nprocess': 50,
-              \ 'page_start': 1,
-              \ 'page_end': 3,
-              \}
-        if s:USE_PSEUDO_RESPONSE
-          let settings.page_end = 0
-          let filename = s:P.realpath(
-                \ s:P.abspath('test/_testdata/Web/API/GitHub/pseudo.py')
-                \)
-          " define '_vim_vital_web_api_github_test_pseudo_request'
-          execute s:Y.exec_file(filename)
-        endif
-        let entries = s:sf._retrieve_python(client, settings)
-        Assert Equals(len(entries), 300)
-        if s:USE_PSEUDO_RESPONSE
-          Assert Equals(entries, pseudo_entries)
-          " undefine '_vim_vital_web_api_github_test_pseudo_request'
-          execute s:Y.exec_code(
-                \ 'del globals()["_vim_vital_web_api_github_test_pseudo_request"]',
-                \)
-        endif
-      End
+    if v:version >= 704 || (v:version == 703 && has('patch601'))
+      if has('python') || has('python3')
+        It return 300 public gist entries (100 entries per page)
+          let pseudo_entries = map(range(1, 300), '{ "id": v:val }')
+          let client = s:G.new()
+          let settings = {
+                \ 'url': 'gists/public',
+                \ 'param': {
+                \   'per_page': 100,
+                \ },
+                \ 'verbose': 0,
+                \ 'indicator': client.retrieve_indicator,
+                \ 'python': 1,
+                \ 'python_nprocess': 50,
+                \ 'page_start': 1,
+                \ 'page_end': 3,
+                \}
+          if s:USE_PSEUDO_RESPONSE
+            let settings.page_end = 0
+            let filename = s:P.realpath(
+                  \ s:P.abspath('test/_testdata/Web/API/GitHub/pseudo.py')
+                  \)
+            " define '_vim_vital_web_api_github_test_pseudo_request'
+            execute s:Y.exec_file(filename)
+          endif
+          let entries = s:sf._retrieve_python(client, settings)
+          Assert Equals(len(entries), 300)
+          if s:USE_PSEUDO_RESPONSE
+            Assert Equals(entries, pseudo_entries)
+            " undefine '_vim_vital_web_api_github_test_pseudo_request'
+            execute s:Y.exec_code(
+                  \ 'del globals()["_vim_vital_web_api_github_test_pseudo_request"]',
+                  \)
+          endif
+        End
+      else
+        It throws an exception with -python/-python3
+          let sf = s:sf
+          let client = s:G.new()
+          let settings = {
+                \ 'url': 'gists/public',
+                \ 'param': {
+                \   'per_page': 100,
+                \ },
+                \ 'verbose': 0,
+                \ 'indicator': client.retrieve_indicator,
+                \ 'python': 1,
+                \ 'python_nprocess': 50,
+                \ 'page_start': 1,
+                \ 'page_end': 3,
+                \}
+          Throw /+python and/or +python3 is required/
+                \ sf._retrieve_python(client, settings)
+        End
+      endif
     else
-      It throws an exception with -python/-python3
-        let sf = s:sf
-        let client = s:G.new()
-        let url = 'gists/public'
-        let params = {
-              \ 'per_page': 100,
-              \ 'page_count': 3,
-              \}
-        let headers = {}
-        let settings = {
-              \ 'verbose': 0,
-              \ 'indicator': client.retrieve_indicator,
-              \ 'python': 1,
-              \}
-        Throw /+python and/or +python3 is required/
-              \ sf._retrieve_python(client, url, params, headers, settings)
+      It is not supported in Vim 7.3.600 or earlier
+          let sf = s:sf
+          let client = s:G.new()
+          let settings = {
+                \ 'url': 'gists/public',
+                \ 'param': {
+                \   'per_page': 100,
+                \ },
+                \ 'verbose': 0,
+                \ 'indicator': client.retrieve_indicator,
+                \ 'python': 1,
+                \ 'python_nprocess': 50,
+                \ 'page_start': 1,
+                \ 'page_end': 3,
+                \}
+          Throw /Vim 7\.3\.600 or earlier is not supported/
+                \ sf._retrieve_python(client, settings)
       End
     endif
   End
