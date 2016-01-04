@@ -13,7 +13,7 @@ let s:sf = s:S.sfuncs(s:P.realpath(s:P.abspath(
       \)))
 
 " Use a pseudo response for 'retrieve' tests
-let s:USE_PSEUDO_RESPONSE = 0
+let s:USE_PSEUDO_RESPONSE = 1
 
 Describe Web.API.GitHub
   Context [PRIVATE] s:_authorize({client}, {username}, {password}[, {options})
