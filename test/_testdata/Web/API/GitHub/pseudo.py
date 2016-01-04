@@ -68,3 +68,4 @@ def _vim_vital_web_api_github_test_pseudo_request(url, headers={}, method=None):
     return PseudoHTTPResponse(200, 'OK', content, {
         'link': ','.join(link),
     })
+

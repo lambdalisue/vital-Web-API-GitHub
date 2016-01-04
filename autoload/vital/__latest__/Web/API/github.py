@@ -166,11 +166,9 @@ def _vim_vital_web_api_github_main():
     try:
         # Override 'request' with 'pseudo_requst' if exists
         try:
-            _vim_vital_web_api_github_test_pseudo_request
+            request = _vim_vital_web_api_github_test_pseudo_request
         except NameError:
             pass
-        else:
-            request = _vim_vital_web_api_github_test_pseudo_request
 
         namespace = vim.bindeval('namespace')
         kwargs = vim.eval('kwargs')
