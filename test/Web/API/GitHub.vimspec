@@ -13,7 +13,7 @@ let s:sf = s:S.sfuncs(s:P.realpath(s:P.abspath(
       \)))
 
 " Use a pseudo response for 'retrieve' tests
-let s:USE_PSEUDO_RESPONSE = 1
+let s:USE_PSEUDO_RESPONSE = 0
 
 Describe Web.API.GitHub
   Context [PRIVATE] s:_authorize({client}, {username}, {password}[, {options})
@@ -192,7 +192,7 @@ Describe Web.API.GitHub
             \)
     End
   End
-  Context [PRIVATE] s:_retrieve_vim({client}, {settings)
+  Context [PRIVATE] s:_retrieve_vim({client}, {settings})
     It return 300 public gist entries (100 entries per page)
       let client = s:G.new()
       let settings = {
@@ -262,7 +262,7 @@ Describe Web.API.GitHub
       endif
     End
   End
-  Context [PRIVATE] s:_retrieve_python({client}, {url}, {params}, {headers}, {settings)
+  Context [PRIVATE] s:_retrieve_python({client}, {settings})
     if has('python') || has('python3')
       It return 300 public gist entries (100 entries per page)
         let pseudo_entries = map(range(1, 300), '{ "id": v:val }')
