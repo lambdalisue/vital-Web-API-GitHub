@@ -11,18 +11,22 @@ def _vim_vital_web_api_github_main():
     """A namespace function for Vital.Web.API.GitHub"""
     import re
     import sys
-    import json
     import collections
     from itertools import chain
     from threading import Lock, Thread
     try:
+        import json
+    except ImportError:
+        import simplejson as json
+    try:
         from urllib.request import urlopen, Request
         from urllib.parse import (urlparse, parse_qs, urlencode,
-                                  urlunparse, urljoin)
+                                urlunparse, urljoin)
     except ImportError:
         from urllib2 import urlopen, Request
-        from urlparse import (urlparse, parse_qs, urlencode,
-                              urlunparse, urljoin)
+        from urllib import urlencode
+        from urlparse import (urlparse, parse_qs,
+                            urlunparse, urljoin)
 
     DEFAULT_INDICATOR = (
         'Requesting entries and converting into '
@@ -177,9 +181,7 @@ def _vim_vital_web_api_github_main():
         entries = request_entries(**kwargs)
         namespace['entries'] = entries
     except:
-        namespace['exception'] = "python: %s" % (
-            format_exception(),
-        )
+        namespace['exception'] = format_exception()
 
 # Call a namespace function
 _vim_vital_web_api_github_main()
