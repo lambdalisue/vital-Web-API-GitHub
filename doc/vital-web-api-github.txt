@@ -32,7 +32,8 @@ CONTENTS				*Vital.Web.API.GitHub-contents*
 
 Introductions			|Vital.Web.API.GitHub-introductions|
 Usage				|Vital.Web.API.GitHub-usage|
-Functions			|Vital.Web.API.GitHub-functions|
+  Functions			|Vital.Web.API.GitHub-functions|
+  Methods			|Vital.Web.API.GitHub-methods|
 
 ==============================================================================
 INTRODUCTIONS				*Vital.Web.API.GitHub-introductions*
@@ -143,7 +144,7 @@ get_config()			*Vital.Web.API.GitHub.get_config()*
 
 	Return a default value of {options} of |Vital.Web.API.GitHub.new()|.
 
-get_config({options})		*Vital.Web.API.GitHub.get_config()*
+set_config({options})		*Vital.Web.API.GitHub.set_config()*
 
 	Set a default value of {options} of |Vital.Web.API.GitHub.new()|.
 
