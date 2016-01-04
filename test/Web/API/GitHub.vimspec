@@ -281,7 +281,9 @@ Describe Web.API.GitHub
               \}
         if s:USE_PSEUDO_RESPONSE
           let settings.page_end = 0
-          let filename = s:P.realpath('test/_testdata/Web/API/GitHub/pseudo.py')
+          let filename = s:P.realpath(
+                \ s:P.abspath('test/_testdata/Web/API/GitHub/pseudo.py')
+                \)
           " define '_vim_vital_web_api_github_test_pseudo_request'
           execute s:Y.exec_file(filename)
         endif
