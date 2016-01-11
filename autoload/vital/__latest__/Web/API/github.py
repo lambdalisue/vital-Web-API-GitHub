@@ -78,7 +78,7 @@ def _vim_vital_web_api_github_main():
         res = urlopen(req)
         if not hasattr(res, 'getheader'):
             # urllib2 does not have getheader
-            res.getheader = lambda self, name: self.info().getheader(name)
+            res.getheader = lambda name, self=res: self.info().getheader(name)
         return res
 
     def request_head(url, name, headers={}):
