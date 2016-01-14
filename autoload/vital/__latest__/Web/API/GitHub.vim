@@ -492,6 +492,11 @@ function! s:client.request(...) abort " {{{
         \ s:_get_header(self.get_token()),
         \ get(settings, 'headers', {}),
         \)
+  " Most of API request is json
+  let settings.headers = extend({
+        \ 'Content-Type': 'application/json',
+        \}, settings.headers
+        \)
   return s:H.request(settings)
 endfunction " }}}
 function! s:client.head(url, ...) abort " {{{
