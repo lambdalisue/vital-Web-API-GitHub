@@ -49,13 +49,12 @@ Describe Web.API.GitHub
             \ 'note_url': '',
             \})
       Assert Equals(args, [{
-            \ 'headers': {},
+            \ 'headers': {
+            \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
+            \ },
             \ 'method': 'POST',
             \ 'data': data,
             \ 'url': 'https://api.github.com/authorizations',
-            \ 'username': 'username',
-            \ 'password': 'password',
-            \ 'authMethod': 'basic',
             \}])
     End
 
@@ -82,13 +81,11 @@ Describe Web.API.GitHub
       Assert Equals(args, [{
             \ 'headers': {
             \   'X-GitHub-OTP': '012345',
+            \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
             \ },
             \ 'method': 'POST',
             \ 'data': data,
             \ 'url': 'https://api.github.com/authorizations',
-            \ 'username': 'username',
-            \ 'password': 'password',
-            \ 'authMethod': 'basic',
             \}])
     End
   End
