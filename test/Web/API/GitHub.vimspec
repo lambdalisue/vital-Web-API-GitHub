@@ -16,7 +16,131 @@ let s:sf = s:S.sfuncs(s:P.realpath(s:P.abspath(
 let s:USE_PSEUDO_RESPONSE = 1
 
 Describe Web.API.GitHub
-  Context [PRIVATE] s:_authorize({client}, {username}, {password}[, {options})
+  Context [PRIVATE] s:_list_authorizations({client}, {username}, {password}[, {options})
+    Before
+      let client = s:G.new()
+      function! client.request(...) abort
+        let self._request_args = a:000
+        return {
+              \ 'status': 200,
+              \ 'statusText': 'success',
+              \ 'content': '[]',
+              \}
+      endfunction
+    End
+
+    It request personal access tokens from GitHub API
+      let ret = s:sf._list_authorizations(
+            \ client,
+            \ 'username',
+            \ 'password', {
+            \   'verbose': 0,
+            \ },
+            \)
+      Assert Equals(ret, {
+            \ 'status': 200,
+            \ 'statusText': 'success',
+            \ 'content': [],
+            \})
+      let args = client._request_args
+      Assert Equals(args, [{
+            \ 'headers': {
+            \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
+            \ },
+            \ 'method': 'GET',
+            \ 'url': 'https://api.github.com/authorizations',
+            \}])
+    End
+
+    It request personal access tokens from GitHub API with {otp}
+      let ret = s:sf._list_authorizations(
+            \ client,
+            \ 'username',
+            \ 'password', {
+            \   'verbose': 0,
+            \   'otp': '012345',
+            \ },
+            \)
+      Assert Equals(ret, {
+            \ 'status': 200,
+            \ 'statusText': 'success',
+            \ 'content': [],
+            \})
+      let args = client._request_args
+      Assert Equals(args, [{
+            \ 'headers': {
+            \   'X-GitHub-OTP': '012345',
+            \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
+            \ },
+            \ 'method': 'GET',
+            \ 'url': 'https://api.github.com/authorizations',
+            \}])
+    End
+  End
+  Context [PRIVATE] s:_delete_authorization({id}, {params}, {client}, {username}, {password}[, {options})
+    Before
+      let client = s:G.new()
+      function! client.request(...) abort
+        let self._request_args = a:000
+        return {
+              \ 'status': 204,
+              \ 'statusText': 'success',
+              \ 'content': '',
+              \}
+      endfunction
+    End
+
+    It delete a personal access token from GitHub API
+      let ret = s:sf._delete_authorization(
+            \ 100,
+            \ client,
+            \ 'username',
+            \ 'password', {
+            \   'verbose': 0,
+            \ },
+            \)
+      Assert Equals(ret, {
+            \ 'status': 204,
+            \ 'statusText': 'success',
+            \ 'content': {},
+            \})
+      let args = client._request_args
+      Assert Equals(args, [{
+            \ 'headers': {
+            \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
+            \ },
+            \ 'method': 'DELETE',
+            \ 'url': 'https://api.github.com/authorizations/100',
+            \}])
+    End
+
+    It delete a personal access token from GitHub API with {otp}
+      let ret = s:sf._delete_authorization(
+            \ 100,
+            \ client,
+            \ 'username',
+            \ 'password', {
+            \   'verbose': 0,
+            \   'otp': '012345',
+            \ },
+            \)
+      Assert Equals(ret, {
+            \ 'status': 204,
+            \ 'statusText': 'success',
+            \ 'content': {},
+            \})
+      let args = client._request_args
+      Assert Equals(args, [{
+            \ 'headers': {
+            \   'X-GitHub-OTP': '012345',
+            \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
+            \ },
+            \ 'method': 'DELETE',
+            \ 'url': 'https://api.github.com/authorizations/100',
+            \}])
+    End
+  End
+  Context [PRIVATE] s:_create_authorization({params}, {client}, {username}, {password}[, {options})
     Before
       let client = s:G.new()
       function! client.request(...) abort
@@ -30,7 +154,13 @@ Describe Web.API.GitHub
     End
 
     It request a personal access token to GitHub API
-      let ret = s:sf._authorize(
+      let params = {
+            \ 'scopes': [],
+            \ 'note': client.get_authorize_note(),
+            \ 'note_url': '',
+            \}
+      let ret = s:sf._create_authorization(
+            \ params,
             \ client,
             \ 'username',
             \ 'password', {
@@ -40,14 +170,10 @@ Describe Web.API.GitHub
       Assert Equals(ret, {
             \ 'status': 200,
             \ 'statusText': 'success',
-            \ 'content': '',
+            \ 'content': {},
             \})
       let args = client._request_args
-      let data = s:J.encode({
-            \ 'scopes': [],
-            \ 'note': client.get_authorize_note(),
-            \ 'note_url': '',
-            \})
+      let data = s:J.encode(params)
       Assert Equals(args, [{
             \ 'headers': {
             \   'Authorization': 'basic dXNlcm5hbWU6cGFzc3dvcmQ=',
@@ -59,7 +185,13 @@ Describe Web.API.GitHub
     End
 
     It request a personal access token to GitHub API with {otp}
-      let ret = s:sf._authorize(
+      let params = {
+            \ 'scopes': [],
+            \ 'note': client.get_authorize_note(),
+            \ 'note_url': '',
+            \}
+      let ret = s:sf._create_authorization(
+            \ params,
             \ client,
             \ 'username',
             \ 'password', {
@@ -70,14 +202,10 @@ Describe Web.API.GitHub
       Assert Equals(ret, {
             \ 'status': 200,
             \ 'statusText': 'success',
-            \ 'content': '',
+            \ 'content': {},
             \})
       let args = client._request_args
-      let data = s:J.encode({
-            \ 'scopes': [],
-            \ 'note': client.get_authorize_note(),
-            \ 'note_url': '',
-            \})
+      let data = s:J.encode(params)
       Assert Equals(args, [{
             \ 'headers': {
             \   'X-GitHub-OTP': '012345',
