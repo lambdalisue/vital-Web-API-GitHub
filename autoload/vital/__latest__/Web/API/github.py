@@ -20,7 +20,7 @@ def _vim_vital_web_api_github_main():
     except ImportError:
         import simplejson as json
     try:
-        from urllib.request import urlopen, Request
+        from urllib.request import urlopen, Request, ProxyHandler, build_opener, install_opener
         from urllib.parse import (urlparse, parse_qs, urlencode,
                                 urlunparse, urljoin)
     except ImportError:
@@ -84,6 +84,7 @@ def _vim_vital_web_api_github_main():
             context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
         else:
             context = None
+        install_opener(build_opener(ProxyHandler()))
         if context:
             res = urlopen(req, context=context)
         else:
